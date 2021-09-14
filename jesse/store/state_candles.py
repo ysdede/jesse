@@ -8,7 +8,8 @@ from jesse.exceptions import RouteNotFound
 from jesse.libs import DynamicNumpyArray
 from jesse.models import store_candle_into_db
 from jesse.services.candle import generate_candle_from_one_minutes
-from jesse.services import logger
+from timeloop import Timeloop
+from datetime import timedelta
 
 
 class CandlesState:
@@ -16,6 +17,44 @@ class CandlesState:
         self.storage = {}
         self.are_all_initiated = False
         self.initiated_pairs = {}
+
+    def generate_new_candles_loop(self):
+        """
+        to prevent the issue of missing candles when no volume is traded on the live exchange
+        """
+        t = Timeloop()
+
+        @t.job(interval=timedelta(seconds=1))
+        def time_loop_per_second():
+            # make sure all candles are already initiated
+            if not self.are_all_initiated:
+                return
+
+            # only at first second on each minute
+            if jh.now() % 60_000 != 1000:
+                return
+
+            for c in config['app']['considering_candles']:
+                exchange, symbol = c[0], c[1]
+                current_candle = self.get_current_candle(exchange, symbol, '1m')
+                if jh.now() > current_candle[0] + 60_000:
+                    new_candle = self._generate_empty_candle_from_previous_candle(current_candle)
+                    self.add_candle(new_candle, exchange, symbol, '1m')
+
+        t.start()
+
+    @staticmethod
+    def _generate_empty_candle_from_previous_candle(previous_candle: np.ndarray) -> np.ndarray:
+        new_candle = previous_candle.copy()
+        new_candle[0] = previous_candle[0] + 60_000
+        # new candle's open, close, high, and low all equal to previous candle's close
+        new_candle[1] = previous_candle[2]
+        new_candle[2] = previous_candle[2]
+        new_candle[3] = previous_candle[2]
+        new_candle[4] = previous_candle[2]
+        # set volume to 0
+        new_candle[5] = 0
+        return new_candle
 
     def mark_all_as_initiated(self):
         for k in self.initiated_pairs:
@@ -67,10 +106,9 @@ class CandlesState:
         if jh.is_live():
             # ignore if candle is still being initially imported
             if with_skip and f'{exchange}-{symbol}' not in self.initiated_pairs:
-                # logger.info(f'SKIPPED {exchange}-{symbol}!')
                 return
 
-            self.update_position(exchange, symbol, candle)
+            self.update_position(exchange, symbol, candle[2])
 
             # ignore new candle at the time of execution because it messes
             # the count of candles without actually having an impact
@@ -109,8 +147,43 @@ class CandlesState:
         elif candle[0] < arr[-1][0]:
             return
 
+    def add_candle_from_trade(self, trade, exchange: str, symbol: str):
+        """
+        In few exchanges, there's no candle stream over the WS, for
+        those we have to use cases the trades stream
+        """
+        if not jh.is_live():
+            raise Exception('add_candle_from_trade() is for live modes only')
+
+        # ignore if candle is still being initially imported
+        if f'{exchange}-{symbol}' not in self.initiated_pairs:
+            return
+
+        # in some cases we might be missing the current forming candle like it is on FTX, hence
+        # if that is the case, generate the current forming candle (it won't be super accurate)
+        current_candle = self.get_current_candle(exchange, symbol, '1m')
+        if jh.now() > current_candle[0] + 60_000:
+            new_candle = self._generate_empty_candle_from_previous_candle(current_candle)
+            self.add_candle(new_candle, exchange, symbol, '1m')
+
+        # update position's current price
+        self.update_position(exchange, symbol, trade['price'])
+
+        current_candle = self.get_current_candle(exchange, symbol, '1m')
+        new_candle = current_candle.copy()
+        # close
+        new_candle[2] = trade['price']
+        # high
+        new_candle[3] = max(new_candle[3], trade['price'])
+        # low
+        new_candle[4] = min(new_candle[4], trade['price'])
+        # volume
+        new_candle[5] += trade['volume']
+
+        self.add_candle(new_candle, exchange, symbol, '1m')
+
     @staticmethod
-    def update_position(exchange: str, symbol: str, candle: np.ndarray) -> None:
+    def update_position(exchange: str, symbol: str, price: float) -> None:
         # get position object
         p = selectors.get_position(exchange, symbol)
 
@@ -122,9 +195,9 @@ class CandlesState:
             price_precision = selectors.get_exchange(exchange).vars['precisions'][symbol]['price_precision']
 
             # update position.current_price
-            p.current_price = jh.round_price_for_live_mode(candle[2], price_precision)
+            p.current_price = jh.round_price_for_live_mode(price, price_precision)
         else:
-            p.current_price = candle[2]
+            p.current_price = price
 
     def generate_bigger_timeframes(self, candle: np.ndarray, exchange: str, symbol: str, with_execution: bool) -> None:
         if not jh.is_live():
