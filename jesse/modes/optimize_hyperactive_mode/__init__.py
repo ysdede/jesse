@@ -113,7 +113,7 @@ class Optimizer():
                     raise ValueError(f'The entered ratio configuration `{ratio_config}` for the optimization is unknown. Choose between sharpe, calmar, sortino and omega.')
 
                 if ratio > 0:
-                    score = total_effect_rate * ratio_normalized
+                    score = ratio_normalized * total_effect_rate
 
         except Exception as e:
             logger.error("".join(traceback.TracebackException.from_exception(e).format()))
