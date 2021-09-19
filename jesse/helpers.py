@@ -5,8 +5,9 @@ import random
 import string
 import sys
 import uuid
-from typing import List, Tuple, Union, Any
 from pprint import pprint
+from typing import List, Tuple, Union, Any
+
 import arrow
 import click
 import numpy as np
@@ -121,7 +122,7 @@ def date_to_timestamp(date: str) -> int:
     return arrow_to_timestamp(arrow.get(date, 'YYYY-MM-DD'))
 
 
-def dna_to_hp(strategy_hp, dna: str):
+def dna_to_hp(strategy_hp: list, dna: str) -> dict:
     hp = {}
 
     for gene, h in zip(dna, strategy_hp):
@@ -137,6 +138,23 @@ def dna_to_hp(strategy_hp, dna: str):
             raise TypeError('Only int and float types are implemented')
 
         hp[h['name']] = decoded_gene
+    return hp
+
+
+def hp_to_dna(strategy_hp: list, values: list) -> str:
+    hp = ""
+
+    for h in strategy_hp:
+        if h['type'] is int or h['type'] is float:
+            encoded_gene = chr(
+                round(
+                    convert_number(h['max'], h['min'], 119, 40, values[h['name']])
+                )
+            )
+        else:
+            raise TypeError('Only int and float types are implemented')
+
+        hp += encoded_gene
     return hp
 
 
@@ -273,6 +291,7 @@ def get_strategy_class(strategy_name: str):
     else:
         return locate(f'strategies.{strategy_name}.{strategy_name}')
 
+
 def hp_rules_valid(hp, rules):
     check = np.full((len(rules)), False, dtype=bool)
 
@@ -294,6 +313,7 @@ def hp_rules_valid(hp, rules):
             check[i] = hp[rule['hp_name1']] <= hp[rule['hp_name2']]
 
     return np.all(check == True)
+
 
 def insecure_hash(msg: str) -> str:
     return hashlib.md5(msg.encode()).hexdigest()
@@ -621,11 +641,11 @@ def round_decimals_down(number: np.ndarray, decimals: int = 2) -> float:
     Returns a value rounded down to a specific number of decimal places.
     """
     if not isinstance(decimals, int):
-      raise TypeError("decimal places must be an integer")
+        raise TypeError("decimal places must be an integer")
     elif decimals < 0:
-      raise ValueError("decimal places has to be 0 or more")
+        raise ValueError("decimal places has to be 0 or more")
     elif decimals == 0:
-      return np.floor(number)
+        return np.floor(number)
 
     factor = 10 ** decimals
     return np.floor(number * factor) / factor

@@ -124,6 +124,7 @@ class Optimizer():
 
             # save the score in the copy of the dictionary
             parameter_dict["score"] = score
+            parameter_dict["dna"] = jh.hp_to_dna(self.strategy_hp, hp.para_dict)
 
             # if score:
             #   # save the daily_returns in the copy of the dictionary
@@ -183,6 +184,7 @@ class Optimizer():
         if jh.file_exists(self.path):
             with open(self.path, "r") as f:
                 mem = pd.read_csv(f, sep=";", na_values='nan')
+                mem.drop('dna', axis=1, inplace=True)
             if not mem.empty and not click.confirm(
                     f'Previous optimization results for {self.study_name} exists. Continue?',
                     default=True,
@@ -251,7 +253,7 @@ class Optimizer():
         if mem is None or mem.empty:
             # init empty pandas dataframe
             # search_data = pd.DataFrame(columns=list(self.search_space.keys()) + ["score", "daily_balance"])
-            search_data = pd.DataFrame(columns=list(self.search_space.keys()) + ["score"])
+            search_data = pd.DataFrame(columns=list(self.search_space.keys()) + ["score", "dna"])
             with open(self.path, "w") as f:
                 search_data.to_csv(f, sep=";", index=False, na_rep='nan')
 
