@@ -2,6 +2,7 @@ from collections import namedtuple
 
 import numpy as np
 import talib as ta
+from numba import njit
 
 from jesse.helpers import get_candle_source, slice_candles
 
@@ -50,13 +51,24 @@ def wt(candles: np.ndarray,
     wt1 = ta.EMA(ci, wtaveragelen)
     wt2 = ta.SMA(wt1, wtmalen)
 
-    wtVwap = wt1 - wt2
-    wtOversold = wt2 <= oslevel
-    wtOverbought = wt2 >= oblevel
-    wtCrossUp = wt2 - wt1 <= 0
-    wtCrossDown = wt2 - wt1 >= 0
+    wtVwap, wtOversold, wtOverbought, wtCrossUp, wtCrossDown = wt_fast(wt1, wt2, oslevel, oblevel)
+
+    # wtVwap = wt1 - wt2
+    # wtOversold = wt2 <= oslevel
+    # wtOverbought = wt2 >= oblevel
+    # wtCrossUp = wt2 - wt1 <= 0
+    # wtCrossDown = wt2 - wt1 >= 0
 
     if sequential:
         return Wavetrend(wt1, wt2, wtCrossUp, wtCrossDown, wtOversold, wtOverbought, wtVwap)
     else:
         return Wavetrend(wt1[-1], wt2[-1], wtCrossUp[-1], wtCrossDown[-1], wtOversold[-1], wtOverbought[-1], wtVwap[-1])
+
+@njit
+def wt_fast(wt1, wt2, oslevel, oblevel):
+    wtVwap = wt1 - wt2
+    wtOversold = wt2 <= oslevel
+    wtOverbought = wt2 >= oblevel
+    wtCrossUp = wt2 - wt1 <= 0
+    wtCrossDown = wt2 - wt1 >= 0
+    return wtVwap, wtOversold, wtOverbought, wtCrossUp, wtCrossDown
