@@ -102,10 +102,7 @@ class Cache:
             with open(item['path'], 'rb') as f:
                 return pickle.load(f)
         except KeyError:
-            candidates = []
-            for pickl in self.db:
-                if key in pickl:
-                    candidates.append(pickl)
+            candidates = [pickl for pickl in self.db if key in pickl]
             # print('Candidates: ', candidates)
 
             start_date = jh.date_to_timestamp(start_date_str)
@@ -129,7 +126,7 @@ class Cache:
                 candidate_finishdate = jh.date_to_timestamp(candidate_finishdate_str)
                 if start_date >= candidate_startdate and finish_date <= candidate_finishdate:
                     parent = p
-                    print('Found a parent!', p)
+                    print('Found a parent!', parent)
                     break
 
             if parent:
