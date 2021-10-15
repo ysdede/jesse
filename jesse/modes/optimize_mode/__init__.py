@@ -215,18 +215,32 @@ def get_training_and_testing_candles(start_date_str: str, finish_date_str: str) 
     training_candles = {}
     testing_candles = {}
     days_diff = jh.date_diff_in_days(jh.timestamp_to_arrow(start_date), jh.timestamp_to_arrow(finish_date))
-    divider_index = int(days_diff * 0.85) * 1440
+    divider_index = int(days_diff * 0.25) * 1440
+
     for key in candles:
-        training_candles[key] = {
+        testing_candles[key] = {
             'exchange': candles[key]['exchange'],
             'symbol': candles[key]['symbol'],
             'candles': candles[key]['candles'][0:divider_index],
         }
 
-        testing_candles[key] = {
+        training_candles[key] = {
             'exchange': candles[key]['exchange'],
             'symbol': candles[key]['symbol'],
             'candles': candles[key]['candles'][divider_index:],
         }
+
+    # for key in candles:
+    #     training_candles[key] = {
+    #         'exchange': candles[key]['exchange'],
+    #         'symbol': candles[key]['symbol'],
+    #         'candles': candles[key]['candles'][0:divider_index],
+    #     }
+    #
+    #     testing_candles[key] = {
+    #         'exchange': candles[key]['exchange'],
+    #         'symbol': candles[key]['symbol'],
+    #         'candles': candles[key]['candles'][divider_index:],
+    #     }
 
     return training_candles, testing_candles
