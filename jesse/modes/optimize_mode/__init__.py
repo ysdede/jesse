@@ -22,7 +22,8 @@ os.environ['NUMEXPR_MAX_THREADS'] = str(cpu_count())
 
 
 class Optimizer(Genetics):
-    def __init__(self, training_candles: ndarray, testing_candles: ndarray, optimal_total: int, cpu_cores: int, csv: bool,
+    def __init__(self, training_candles: ndarray, testing_candles: ndarray, optimal_total: int, cpu_cores: int,
+                 csv: bool,
                  json: bool, start_date: str, finish_date: str) -> None:
         if len(router.routes) != 1:
             raise NotImplementedError('optimize_mode mode only supports one route at the moment')
@@ -196,7 +197,8 @@ def optimize_mode(start_date: str, finish_date: str, optimal_total: int, cpu_cor
     # clear the screen
     click.clear()
 
-    optimizer = Optimizer(training_candles, testing_candles, optimal_total, cpu_cores, csv, json, start_date, finish_date)
+    optimizer = Optimizer(training_candles, testing_candles, optimal_total, cpu_cores, csv, json, start_date,
+                          finish_date)
 
     optimizer.run()
 
@@ -215,29 +217,29 @@ def get_training_and_testing_candles(start_date_str: str, finish_date_str: str) 
     training_candles = {}
     testing_candles = {}
     days_diff = jh.date_diff_in_days(jh.timestamp_to_arrow(start_date), jh.timestamp_to_arrow(finish_date))
-    divider_index = int(days_diff * 0.25) * 1440
+    divider_index = int(days_diff * 0.75) * 1440
 
     for key in candles:
-        testing_candles[key] = {
+        training_candles[key] = {
             'exchange': candles[key]['exchange'],
             'symbol': candles[key]['symbol'],
             'candles': candles[key]['candles'][0:divider_index],
         }
 
-        training_candles[key] = {
+        testing_candles[key] = {
             'exchange': candles[key]['exchange'],
             'symbol': candles[key]['symbol'],
             'candles': candles[key]['candles'][divider_index:],
         }
 
     # for key in candles:
-    #     training_candles[key] = {
+    #     testing_candles[key] = {
     #         'exchange': candles[key]['exchange'],
     #         'symbol': candles[key]['symbol'],
     #         'candles': candles[key]['candles'][0:divider_index],
     #     }
     #
-    #     testing_candles[key] = {
+    #     training_candles[key] = {
     #         'exchange': candles[key]['exchange'],
     #         'symbol': candles[key]['symbol'],
     #         'candles': candles[key]['candles'][divider_index:],
