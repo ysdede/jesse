@@ -172,7 +172,7 @@ def load_candles(start_date_str: str, finish_date_str: str) -> Dict[str, Dict[st
         key = jh.key(exchange, symbol)
 
         cache_key = f"{start_date_str}-{finish_date_str}-{key}"
-        if jh.get_config('env.caching.recycle'):
+        if jh.get_config('env.caching.recycle'):  # TODO Override?
             print('Recycling enabled!')
             cached_value = cache.slice_pickles(cache_key, start_date_str, finish_date_str, key)
         else:
