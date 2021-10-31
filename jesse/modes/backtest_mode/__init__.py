@@ -92,17 +92,13 @@ def run(start_date: str, finish_date: str, candles: Dict[str, Dict[str, Union[st
                 change.append(((last.close - first.close) / first.close) * 100.0)
 
             data = report.portfolio_metrics()
-            data.append(['Market Change', f"{str(round(np.average(change), 2))}%"])
+            data.append(['Market Change', f'{round(np.average(change), 2)}%'])
             print('\n')
             table.key_value(data, 'Metrics', alignments=('left', 'right'))
             print('\n')
 
-            # save logs
-            more = ""
             routes_count = len(router.routes)
-            if routes_count > 1:
-                more = f"-and-{routes_count - 1}-more"
-
+            more = f"-and-{routes_count - 1}-more" if routes_count > 1 else ""
             study_name = f"{router.routes[0].strategy_name}-{router.routes[0].exchange}-{router.routes[0].symbol}-{router.routes[0].timeframe}{more}-{start_date}-{finish_date}"
             store_logs(study_name, json, tradingview, csv)
 
@@ -174,12 +170,7 @@ def load_candles(start_date_str: str, finish_date_str: str) -> Dict[str, Dict[st
         cache_key = f"{start_date_str}-{finish_date_str}-{key}"
         cached_value = cache.get_value(cache_key)
         # if cache exists
-        if cached_value:
-            candles_tuple = cached_value
-        # not cached, get and cache for later calls in the next 5 minutes
-        else:
-            # fetch from database
-            candles_tuple = Candle.select(
+        candles_tuple = cached_value or Candle.select(
                 Candle.timestamp, Candle.open, Candle.close, Candle.high, Candle.low,
                 Candle.volume
             ).where(
@@ -187,7 +178,6 @@ def load_candles(start_date_str: str, finish_date_str: str) -> Dict[str, Dict[st
                 Candle.exchange == exchange,
                 Candle.symbol == symbol
             ).order_by(Candle.timestamp.asc()).tuples()
-
         # validate that there are enough candles for selected period
         required_candles_count = (finish_date - start_date) / 60_000
         if len(candles_tuple) == 0 or candles_tuple[-1][0] != finish_date or candles_tuple[0][0] != start_date:
@@ -198,7 +188,7 @@ def load_candles(start_date_str: str, finish_date_str: str) -> Dict[str, Dict[st
                 f'There are missing candles between {start_date_str} => {finish_date_str}')
 
         # cache it for near future calls
-        cache.set_value(cache_key, tuple(candles_tuple), expire_seconds=60 * 60 * 24 * 7)
+        cache.set_value(cache_key, tuple(candles_tuple), expire_seconds=60**2 * 24 * 7)
 
         candles[key] = {
             'exchange': exchange,
