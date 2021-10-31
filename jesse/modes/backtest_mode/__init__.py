@@ -214,7 +214,12 @@ def load_candles(start_date_str: str, finish_date_str: str) -> Dict[str, Dict[st
     return candles
 
 
-def simulator(candles: Dict[str, Dict[str, Union[str, np.ndarray]]], hyperparameters: dict = None) -> None:
+def simulator(*args, **kwargs):
+    # iterative_simulator(*args, **kwargs)
+    skip_simulator(*args, **kwargs)
+
+
+def iterative_simulator(candles: Dict[str, Dict[str, Union[str, np.ndarray]]], hyperparameters: dict = None) -> None:
     begin_time_track = time.time()
     key = f"{config['app']['considering_candles'][0][0]}-{config['app']['considering_candles'][0][1]}"
     first_candles_set = candles[key]['candles']
@@ -338,6 +343,163 @@ def simulator(candles: Dict[str, Dict[str, Union[str, np.ndarray]]], hyperparame
     save_daily_portfolio_balance()
 
 
+def skip_simulator(candles: Dict[str, Dict[str, Union[str, np.ndarray]]], hyperparameters: dict = None) -> None:
+    begin_time_track = time.time()
+    key = f"{config['app']['considering_candles'][0][0]}-{config['app']['considering_candles'][0][1]}"
+    first_candles_set = candles[key]['candles']
+    length = len(first_candles_set)
+    # to preset the array size for performance
+    store.app.starting_time = first_candles_set[0][0]
+    store.app.time = first_candles_set[0][0]
+
+    # initiate strategies
+    min_timeframe = _initialized_strategies(hyperparameters)
+
+    # add initial balance
+    save_daily_portfolio_balance()
+
+    with click.progressbar(length=length, label='Executing simulation...') as progressbar:
+        i = min_timeframe_remainder = skip = min_timeframe
+        # i is the i'th candle, which means that the first candle is i=1 etc..
+
+        while i <= length:
+            # update time
+            store.app.time = first_candles_set[i - 1][0] + 60_000
+
+            # add candles
+            for j in candles:
+
+                short_candles = candles[j]['candles'][i - skip: i]
+                # remove previous_short_candle fix
+                exchange = candles[j]['exchange']
+                symbol = candles[j]['symbol']
+
+                store.candles.add_candle(short_candles, exchange, symbol, '1m', with_execution=False,
+                                         with_generation=False)
+
+                # print short candle
+                if jh.is_debuggable('shorter_period_candles'):
+                    print_candle(short_candles[-1], True, symbol)
+
+                current_temp_candle = generate_candle_from_one_minutes('',
+                                                                       short_candles,
+                                                                       accept_forming_candles=True)
+
+                if i - skip > 0:
+                    current_temp_candle = _get_fixed_jumped_candle(candles[j]['candles'][i - skip - 1], current_temp_candle)
+                # in this new prices update there might be an order that needs to be executed
+                _simulate_price_change_effect(current_temp_candle, exchange, symbol)
+
+                # generate and add candles for bigger timeframes
+                for timeframe in config['app']['considering_timeframes']:
+                    # for 1m, no work is needed
+                    if timeframe == '1m':
+                        continue
+
+                    count = jh.timeframe_to_one_minutes(timeframe)
+
+                    if i % count == 0:
+                        generated_candle = generate_candle_from_one_minutes(
+                            timeframe,
+                            candles[j]['candles'][i - count:i])
+                        store.candles.add_candle(generated_candle, exchange, symbol, timeframe, with_execution=False,
+                                                 with_generation=False)
+
+            # update progressbar
+            if not jh.is_debugging() and not jh.should_execute_silently():
+                progressbar.update(skip)
+
+            # now that all new generated candles are ready, execute
+            _execute_candles(i)
+
+            if i % 1440 == 0:
+                save_daily_portfolio_balance()
+
+            skip = _skip_n_candles(candles, min_timeframe_remainder, i)
+            if skip < min_timeframe_remainder:
+                min_timeframe_remainder -= skip
+            elif skip == min_timeframe_remainder:
+                min_timeframe_remainder = min_timeframe
+            i += skip
+
+    _finish_simulation(begin_time_track)
+
+
+def _initialized_strategies(hyperparameters: dict = None):
+    for r in router.routes:
+        StrategyClass = jh.get_strategy_class(r.strategy_name)
+
+        try:
+            r.strategy = StrategyClass()
+        except TypeError:
+            raise exceptions.InvalidStrategy(
+                "Looks like the structure of your strategy directory is incorrect. "
+                "Make sure to include the strategy INSIDE the __init__.py file.\n"
+                "If you need working examples, check out: https://github.com/jesse-ai/example-strategies"
+            )
+
+        r.strategy.name = r.strategy_name
+        r.strategy.exchange = r.exchange
+        r.strategy.symbol = r.symbol
+        r.strategy.timeframe = r.timeframe
+        # inject hyper parameters (used for optimize_mode)
+        # convert DNS string into hyperparameters
+        if r.dna and hyperparameters is None:
+            hyperparameters = jh.dna_to_hp(r.strategy.hyperparameters(), r.dna)
+
+        # inject hyperparameters sent within the optimize mode
+        if hyperparameters is not None:
+            r.strategy.hp = hyperparameters
+
+        # init few objects that couldn't be initiated in Strategy __init__
+        # it also injects hyperparameters into self.hp in case the route does not uses any DNAs
+        r.strategy._init_objects()
+
+        selectors.get_position(r.exchange, r.symbol).strategy = r.strategy
+
+    # search for minimum timeframe for skips
+    consider_timeframes = [jh.timeframe_to_one_minutes(timeframe) for timeframe in config['app']['considering_timeframes'] if timeframe != '1m']
+
+    # for cases where only 1m is used in this simulation
+    if not consider_timeframes:
+        return 1
+    # take the greatest common divisor for that purpose
+    return np.gcd.reduce(consider_timeframes)
+
+
+def _execute_candles(i: int):
+    for r in router.routes:
+        count = jh.timeframe_to_one_minutes(r.timeframe)
+        if i % count == 0:
+            # print candle
+            if jh.is_debuggable('trading_candles'):
+                print_candle(store.candles.get_current_candle(r.exchange, r.symbol, r.timeframe), False,
+                             r.symbol)
+            r.strategy._execute()
+
+    # now check to see if there's any MARKET orders waiting to be executed
+    store.orders.execute_pending_market_orders()
+
+
+def _finish_simulation(begin_time_track: float):
+    res = 0
+    if not jh.should_execute_silently():
+        if jh.is_debuggable('trading_candles') or jh.is_debuggable('shorter_period_candles'):
+            print('\n')
+
+        # print executed time for the backtest session
+        finish_time_track = time.time()
+        res = round(finish_time_track - begin_time_track, 2)
+        print('Executed backtest simulation in: ', f'{res} seconds')
+
+    for r in router.routes:
+        r.strategy._terminate()
+        store.orders.execute_pending_market_orders()
+
+    # now that backtest is finished, add finishing balance
+    save_daily_portfolio_balance()
+
+
 def _get_fixed_jumped_candle(previous_candle: np.ndarray, candle: np.ndarray) -> np.ndarray:
     """
     A little workaround for the times that the price has jumped and the opening
@@ -346,14 +508,56 @@ def _get_fixed_jumped_candle(previous_candle: np.ndarray, candle: np.ndarray) ->
     :param previous_candle: np.ndarray
     :param candle: np.ndarray
     """
+    candle[1] = previous_candle[2]
     if previous_candle[2] < candle[1]:
-        candle[1] = previous_candle[2]
         candle[4] = min(previous_candle[2], candle[4])
-    elif previous_candle[2] > candle[1]:
-        candle[1] = previous_candle[2]
+    else:
         candle[3] = max(previous_candle[2], candle[3])
 
     return candle
+
+
+def _skip_n_candles(candles, max_skip: int, i: int) -> int:
+    """
+    calculate how many 1 minute candles can be skipped by checking if the next candles
+    will execute limit and stop orders
+
+    Use binary search to find an interval that only 1 or 0 orders execution is needed
+    :param candles: np.ndarray - array of the whole 1 minute candles
+    :max_skip: int - the interval that not matter if there is an order to be updated or not.
+    :i: int - the current candle that should be executed
+
+    :return: int - the size of the candles in minutes needs to skip
+    """
+    while True:
+        orders_counter = 0
+        for r in router.routes:
+            if store.orders.count_active_orders(r.exchange, r.symbol) < 2:
+                continue
+
+            orders = store.orders.get_orders(r.exchange, r.symbol)
+            future_candles = candles[f'{r.exchange}-{r.symbol}']['candles']
+            if i >= len(future_candles):
+                # if there is a problem with i or with the candles it will raise somewhere else
+                # for now it still satisfy the condition that no more than 2 orders will be execute in the next candle
+                break
+
+            current_temp_candle = generate_candle_from_one_minutes('',
+                                                                   future_candles[i:i+max_skip],
+                                                                   accept_forming_candles=True)
+
+            for order in orders:
+                if order.is_active and candle_includes_price(current_temp_candle, order.price):
+                    orders_counter += 1
+
+        if orders_counter < 2 or max_skip == 1:
+            # no more than 2 orders that can interfere each other in this candle.
+            # or the candle is 1 minute candle, so I cant reduce it to smaller interval :/
+            break
+
+        max_skip //= 2
+
+    return max_skip
 
 
 def _simulate_price_change_effect(real_candle: np.ndarray, exchange: str, symbol: str) -> None:
