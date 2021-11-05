@@ -82,10 +82,6 @@ class CandlesState:
         for c in config['app']['considering_candles']:
             exchange, symbol = c[0], c[1]
 
-            # initiate the '1m' timeframes
-            key = jh.key(exchange, symbol, timeframes.MINUTE_1)
-            self.storage[key] = DynamicNumpyArray((bucket_size, 6))
-
             for timeframe in config['app']['considering_timeframes']:
                 key = jh.key(exchange, symbol, timeframe)
                 # ex: 1440 / 60 + 1 (reserve one for forming candle)
@@ -102,6 +98,39 @@ class CandlesState:
             with_generation: bool = True,
             with_skip: bool = True
     ) -> None:
+
+        # add only 1 candle
+        if len(candle.shape) == 1:
+            self._add_one_candle(
+                candle,
+                exchange,
+                symbol,
+                timeframe,
+                with_execution,
+                with_generation,
+                with_skip)
+
+        # add only multiple candles
+        elif len(candle.shape) == 2:
+
+            self._add_multiple_candles(
+                candle,
+                exchange,
+                symbol,
+                timeframe,
+                with_execution,
+                with_generation,
+                )
+
+    def _add_one_candle(self,
+                        candle: np.ndarray,
+                        exchange: str,
+                        symbol: str,
+                        timeframe: str,
+                        with_execution: bool = True,
+                        with_generation: bool = True,
+                        with_skip: bool = True):
+        arr: DynamicNumpyArray = self.get_storage(exchange, symbol, timeframe)
         if jh.is_collecting_data():
             # make sure it's a complete (and not a forming) candle
             if jh.now_to_timestamp() >= (candle[0] + 60000):
@@ -112,8 +141,6 @@ class CandlesState:
             if jh.is_debugging():
                 logger.error("DEBUGGING-VALUE: please report to Saleh: candle[0] is zero")
             return
-
-        arr: DynamicNumpyArray = self.get_storage(exchange, symbol, timeframe)
 
         if jh.is_live():
             # ignore if candle is still being initially imported
@@ -158,6 +185,33 @@ class CandlesState:
         # past candles will be ignored (dropped)
         elif candle[0] < arr[-1][0]:
             return
+
+    def _add_multiple_candles(self,
+                              candle: np.ndarray,
+                              exchange: str,
+                              symbol: str,
+                              timeframe: str,
+                              with_execution: bool = True,
+                              with_generation: bool = True):
+
+        arr: DynamicNumpyArray = self.get_storage(exchange, symbol, timeframe)
+        # this is an array of candles
+        if len(arr) == 0:
+            arr.append_multiple(candle)
+
+        # if it's new, add
+        elif candle[-1][0] > arr[-1][0]:
+            # in paper mode, check to see if the new candle causes any active orders to be executed
+            if with_execution and jh.is_paper_trading():
+                self.simulate_order_execution(exchange, symbol, timeframe, candle)
+
+            arr.append_multiple(candle)
+
+            # generate other timeframes
+            if with_generation and timeframe == '1m':
+                self.generate_bigger_timeframes(candle, exchange, symbol, with_execution)
+        else:
+            raise ValueError('Try to insert list of candles into memory, but some already exist..')
 
     def add_candle_from_trade(self, trade, exchange: str, symbol: str) -> None:
         """
@@ -268,7 +322,8 @@ class CandlesState:
     def batch_add_candle(self, candles: np.ndarray, exchange: str, symbol: str, timeframe: str,
                          with_generation: bool = True) -> None:
         for c in candles:
-            self.add_candle(c, exchange, symbol, timeframe, with_execution=False, with_generation=with_generation, with_skip=False)
+            self.add_candle(c, exchange, symbol, timeframe, with_execution=False, with_generation=with_generation,
+                            with_skip=False)
 
     def forming_estimation(self, exchange: str, symbol: str, timeframe: str) -> tuple:
         long_key = jh.key(exchange, symbol, timeframe)
