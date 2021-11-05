@@ -167,6 +167,7 @@ def load_candles(start_date_str: str, finish_date_str: str) -> Dict[str, Dict[st
     # download candles for the duration of the backtest
     candles = {}
     for c in config['app']['considering_candles']:
+        fetched_from_db = False
         exchange, symbol = c[0], c[1]
 
         key = jh.key(exchange, symbol)
@@ -187,6 +188,7 @@ def load_candles(start_date_str: str, finish_date_str: str) -> Dict[str, Dict[st
                 Candle.exchange == exchange,
                 Candle.symbol == symbol
             ).order_by(Candle.timestamp.asc()).tuples()
+            fetched_from_db = True
 
         # validate that there are enough candles for selected period
         required_candles_count = (finish_date - start_date) / 60_000
@@ -197,8 +199,9 @@ def load_candles(start_date_str: str, finish_date_str: str) -> Dict[str, Dict[st
             raise exceptions.CandleNotFoundInDatabase(
                 f'There are missing candles between {start_date_str} => {finish_date_str}')
 
-        # cache it for near future calls
-        cache.set_value(cache_key, tuple(candles_tuple), expire_seconds=60 * 60 * 24 * 7)
+        # if candles retrieved from db cache it for near future calls. Skip if it's already cached
+        if fetched_from_db:
+            cache.set_value(cache_key, tuple(candles_tuple), expire_seconds=60 * 60 * 24 * 7)
 
         candles[key] = {
             'exchange': exchange,
