@@ -11,7 +11,7 @@ import arrow
 import click
 import numpy as np
 
-CACHED_CONFIG = dict()
+CACHED_CONFIG = {}
 
 
 def app_currency() -> str:
