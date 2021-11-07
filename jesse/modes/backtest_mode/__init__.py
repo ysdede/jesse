@@ -168,7 +168,7 @@ def load_candles(start_date_str: str, finish_date_str: str) -> Dict[str, Dict[st
     candles = {}
     for c in config['app']['considering_candles']:
         exchange, symbol = c[0], c[1]
-
+        from_db = False
         key = jh.key(exchange, symbol)
 
         cache_key = f"{start_date_str}-{finish_date_str}-{key}"
