@@ -52,16 +52,16 @@ class Cache:
             return False
 
         # if expired, remove file, and database record
-        if item['expire_at'] is not None and time() > item['expire_at']:
-            os.remove(item['path'])
-            del self.db[key]
-            self._update_db()
-            return False
+        # if item['expire_at'] is not None and time() > item['expire_at']:
+        #     os.remove(item['path'])
+        #     del self.db[key]
+        #     self._update_db()
+        #     return False
 
         # renew cache expiration time
-        if item['expire_at'] is not None:
-            item['expire_at'] = time() + item['expire_seconds']
-            self._update_db()
+        # if item['expire_at'] is not None:
+        #     item['expire_at'] = time() + item['expire_seconds']
+        #     self._update_db()
 
         with open(item['path'], 'rb') as f:
             return pickle.load(f)
@@ -88,16 +88,16 @@ class Cache:
             item = self.db[cache_key]
             # print('item:', item)
             # if expired, remove file, and database record
-            if item['expire_at'] is not None and time() > item['expire_at']:
-                os.remove(item['path'])
-                del self.db[cache_key]
-                self._update_db()
-                return False
+            # if item['expire_at'] is not None and time() > item['expire_at']:
+            #     os.remove(item['path'])
+            #     del self.db[cache_key]
+            #     self._update_db()
+            #     return False
 
             # renew cache expiration time
-            if item['expire_at'] is not None:
-                item['expire_at'] = time() + item['expire_seconds']
-                self._update_db()
+            # if item['expire_at'] is not None:
+            #     item['expire_at'] = time() + item['expire_seconds']
+            #     self._update_db()
 
             with open(item['path'], 'rb') as f:
                 return pickle.load(f)
@@ -135,16 +135,16 @@ class Cache:
                     # print('item:', item)
 
                     # if expired, remove file, and database record
-                    """if item['expire_at'] is not None and time() > item['expire_at']:
-                        os.remove(item['path'])
-                        del self.db[cache_key]
-                        self._update_db()
-                        return False"""
+                    # if item['expire_at'] is not None and time() > item['expire_at']:
+                    #     os.remove(item['path'])
+                    #     del self.db[cache_key]
+                    #     self._update_db()
+                    #     return False
 
                     # renew cache expiration time
-                    if item['expire_at'] is not None:
-                        item['expire_at'] = time() + item['expire_seconds']
-                        self._update_db()
+                    # if item['expire_at'] is not None:
+                    #     item['expire_at'] = time() + item['expire_seconds']
+                    #     self._update_db()
 
                     with open(item['path'], 'rb') as f:
                         parent_pickles = pickle.load(f)
