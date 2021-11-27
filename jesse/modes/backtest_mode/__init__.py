@@ -30,7 +30,7 @@ from jesse.store import store
 
 def run(start_date: str, finish_date: str, candles: Dict[str, Dict[str, Union[str, np.ndarray]]] = None,
         chart: bool = False, tradingview: bool = False, full_reports: bool = False,
-        csv: bool = False, json: bool = False) -> None:
+        csv: bool = False, json: bool = False, hyperparameters: dict = None) -> None:
     # clear the screen
     if not jh.should_execute_silently():
         click.clear()
@@ -60,9 +60,10 @@ def run(start_date: str, finish_date: str, candles: Dict[str, Dict[str, Union[st
         # print guidance for debugging candles
         if jh.is_debuggable('trading_candles') or jh.is_debuggable('shorter_period_candles'):
             print('     Symbol  |     timestamp    | open | close | high | low | volume')
-
+            
+    # print('backtest:: I got hyperparameters: ', hyperparameters)
     # run backtest simulation
-    simulator(candles)
+    simulator(candles, hyperparameters)
 
     if not jh.should_execute_silently():
         # print trades metrics
