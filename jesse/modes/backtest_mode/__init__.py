@@ -30,7 +30,7 @@ from jesse.store import store
 
 def run(start_date: str, finish_date: str, candles: Dict[str, Dict[str, Union[str, np.ndarray]]] = None,
         chart: bool = False, tradingview: bool = False, full_reports: bool = False,
-        csv: bool = False, json: bool = False) -> None:
+        csv: bool = False, json: bool = False, hyperparameters: dict = None) -> None:
     # clear the screen
     if not jh.should_execute_silently():
         click.clear()
@@ -62,7 +62,7 @@ def run(start_date: str, finish_date: str, candles: Dict[str, Dict[str, Union[st
             print('     Symbol  |     timestamp    | open | close | high | low | volume')
 
     # run backtest simulation
-    simulator(candles)
+    simulator(candles, hyperparameters)
 
     if not jh.should_execute_silently():
         if store.completed_trades.count > 0:
@@ -156,26 +156,35 @@ def load_candles(start_date_str: str, finish_date_str: str) -> Dict[str, Dict[st
                 c[1]
             )
 
-    # download candles for the duration of the backtest
+     # download candles for the duration of the backtest
     candles = {}
     for c in config['app']['considering_candles']:
         exchange, symbol = c[0], c[1]
-
+        from_db = False
         key = jh.key(exchange, symbol)
 
         cache_key = f"{start_date_str}-{finish_date_str}-{key}"
-        cached_value = cache.get_value(cache_key)
+        if jh.get_config('env.caching.recycle'):  # TODO Override?
+            print('Recycling enabled!')
+            cached_value = cache.slice_pickles(cache_key, start_date_str, finish_date_str, key)
+        else:
+            cached_value = cache.get_value(cache_key)
+            print('Recycling disabled, falling back to vanilla driver!')
         # if cache exists
+        if cached_value:
+            candles_tuple = cached_value
         # not cached, get and cache for later calls in the next 5 minutes
-        # fetch from database
-        candles_tuple = cached_value or Candle.select(
-                Candle.timestamp, Candle.open, Candle.close, Candle.high, Candle.low,
-                Candle.volume
-            ).where(
-                Candle.timestamp.between(start_date, finish_date),
-                Candle.exchange == exchange,
-                Candle.symbol == symbol
-            ).order_by(Candle.timestamp.asc()).tuples()
+        else:
+            # fetch from database
+            candles_tuple = cached_value or Candle.select(
+                    Candle.timestamp, Candle.open, Candle.close, Candle.high, Candle.low,
+                    Candle.volume
+                ).where(
+                    Candle.timestamp.between(start_date, finish_date),
+                    Candle.exchange == exchange,
+                    Candle.symbol == symbol
+                ).order_by(Candle.timestamp.asc()).tuples()
+                
         # validate that there are enough candles for selected period
         required_candles_count = (finish_date - start_date) / 60_000
         if len(candles_tuple) == 0 or candles_tuple[-1][0] != finish_date or candles_tuple[0][0] != start_date:

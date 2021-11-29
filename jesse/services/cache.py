@@ -52,16 +52,16 @@ class Cache:
             return False
 
         # if expired, remove file, and database record
-        if item['expire_at'] is not None and time() > item['expire_at']:
-            os.remove(item['path'])
-            del self.db[key]
-            self._update_db()
-            return False
+        # if item['expire_at'] is not None and time() > item['expire_at']:
+        #     os.remove(item['path'])
+        #     del self.db[key]
+        #     self._update_db()
+        #     return False
 
         # renew cache expiration time
-        if item['expire_at'] is not None:
-            item['expire_at'] = time() + item['expire_seconds']
-            self._update_db()
+        # if item['expire_at'] is not None:
+        #     item['expire_at'] = time() + item['expire_seconds']
+        #     self._update_db()
 
         with open(item['path'], 'rb') as f:
             return pickle.load(f)
@@ -78,6 +78,97 @@ class Cache:
         for key, item in self.db.items():
             os.remove(item['path'])
         self.db = {}
+
+    def slice_pickles(self, cache_key: str, start_date_str: str, finish_date_str: str, key: str,
+                      warm_up: bool = False) -> Any:
+        if self.driver is None:
+            return
+
+        try:
+            item = self.db[cache_key]
+            # print('item:', item)
+            # if expired, remove file, and database record
+            # if item['expire_at'] is not None and time() > item['expire_at']:
+            #     os.remove(item['path'])
+            #     del self.db[cache_key]
+            #     self._update_db()
+            #     return False
+
+            # renew cache expiration time
+            # if item['expire_at'] is not None:
+            #     item['expire_at'] = time() + item['expire_seconds']
+            #     self._update_db()
+
+            with open(item['path'], 'rb') as f:
+                return pickle.load(f)
+        except KeyError:
+            candidates = [pickl for pickl in self.db if key in pickl]
+            # print('Candidates: ', candidates)
+
+            start_date = jh.date_to_timestamp(start_date_str)
+            finish_date = jh.date_to_timestamp(finish_date_str) - 60000
+
+            if warm_up:
+                finish_date += 60_000 * 1440
+
+            candidate_finishdate = 0
+            candidate_startdate = 0
+            parent = {}
+            got_parent = False
+
+            for p in candidates:
+                candidate_dates = p.split(key)[0].split('-')
+                # print(candidate_dates)
+                candidate_startdate_str = f'{candidate_dates[0]}-{candidate_dates[1]}-{candidate_dates[2]}'
+                candidate_finishdate_str = f'{candidate_dates[3]}-{candidate_dates[4]}-{candidate_dates[5]}'
+                # print('candidate start-finish dates in str: ', candidate_startdate_str, candidate_finishdate_str)
+                candidate_startdate = jh.date_to_timestamp(candidate_startdate_str)
+                candidate_finishdate = jh.date_to_timestamp(candidate_finishdate_str)
+                if start_date >= candidate_startdate and finish_date <= candidate_finishdate:
+                    parent = p
+                    print('Found a parent!', parent)
+                    break
+
+            if parent:
+                try:
+                    item = self.db[parent]
+                    # print('item:', item)
+
+                    # if expired, remove file, and database record
+                    # if item['expire_at'] is not None and time() > item['expire_at']:
+                    #     os.remove(item['path'])
+                    #     del self.db[cache_key]
+                    #     self._update_db()
+                    #     return False
+
+                    # renew cache expiration time
+                    # if item['expire_at'] is not None:
+                    #     item['expire_at'] = time() + item['expire_seconds']
+                    #     self._update_db()
+
+                    with open(item['path'], 'rb') as f:
+                        parent_pickles = pickle.load(f)
+
+                    slice_len = int((finish_date / 60_000) - (start_date / 60_000))
+                    slice_start = int((start_date / 60_000) - (candidate_startdate / 60_000))
+                    slice_end = int(candidate_finishdate / 60_000 - finish_date / 60_000)  # for -slice from end
+                    slice_finish = slice_start + slice_len  # wut??????????????????
+                    pickle_slice = parent_pickles[slice_start:slice_finish + 1]
+
+                    print(f'Slice Start: {slice_start} Finish: {slice_finish} | Calculated Slice len: {slice_len} | '
+                          f'Slice len: {len(pickle_slice) / 60 / 24} days | Orphan startdate: {start_date} '
+                          f'Parent startdate: {candidate_startdate}')
+                    print('Len parent_pickles', len(parent_pickles))
+
+                    # print('with enum', parent_pickles[index])
+                    """print('Start with calc', parent_pickles[slice_start],
+                          datetime.datetime.fromtimestamp(parent_pickles[slice_start][0] / 1000))
+                    print('Finish with calc', parent_pickles[slice_finish],
+                          datetime.datetime.fromtimestamp(parent_pickles[slice_finish][0] / 1000))"""
+                    return pickle_slice
+                except KeyError:
+                    return False
+            return False
 
 
 cache = Cache("storage/temp/")
