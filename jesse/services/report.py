@@ -186,7 +186,7 @@ def livetrade() -> List[Union[List[Union[str, Any]], List[str], List[Union[str, 
 
 def portfolio_metrics() -> List[
     Union[Union[List[Union[str, Any]], List[str], List[Union[Union[str, float], Any]]], Any]]:
-    data = stats.trades(store.completed_trades.trades, store.app.daily_balance)
+    data = stats.trades(store.completed_trades.trades, store.app.daily_balance, True)
 
     metrics = [
         ['Total Closed Trades', data['total']],
@@ -217,6 +217,9 @@ def portfolio_metrics() -> List[
 
     metrics.append(['Serenity Index', round(data['serenity_index'], 2)])
 
+    metrics.append(['Smart Sharpe', round(data['smart_sharpe'], 2)])
+    metrics.append(['Smart Sortino', round(data['smart_sortino'], 2)])
+    
     if jh.get_config('env.metrics.sharpe_ratio', True):
         metrics.append(['Sharpe Ratio', round(data['sharpe_ratio'], 2)])
     if jh.get_config('env.metrics.calmar_ratio', False):
