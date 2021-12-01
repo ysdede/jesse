@@ -216,7 +216,9 @@ def portfolio_metrics() -> List[
     ]
 
     metrics.append(['Serenity Index', round(data['serenity_index'], 2)])
-
+    metrics.append(['Smart Sharpe', round(data['smart_sharpe'], 2)])
+    metrics.append(['Smart Sortino', round(data['smart_sortino'], 2)])
+    
     if jh.get_config('env.metrics.sharpe_ratio', True):
         metrics.append(['Sharpe Ratio', round(data['sharpe_ratio'], 2)])
     if jh.get_config('env.metrics.calmar_ratio', False):
