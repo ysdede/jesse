@@ -7,9 +7,9 @@ import quantstats as qs
 
 from jesse.config import config
 from jesse.store import store
+from jessetk.utils import hp_to_seq
 
-
-def quantstats_tearsheet(buy_and_hold_returns: pd.Series, study_name: str) -> None:
+def quantstats_tearsheet(buy_and_hold_returns: pd.Series, study_name: str, hyperparameters: str = None) -> None:
     daily_returns = pd.Series(store.app.daily_balance).pct_change(1).values
 
     start_date = datetime.fromtimestamp(store.app.starting_time / 1000)
@@ -25,10 +25,11 @@ def quantstats_tearsheet(buy_and_hold_returns: pd.Series, study_name: str) -> No
     }
 
     os.makedirs('./storage/full-reports', exist_ok=True)
+    
+    seq = hp_to_seq(hyperparameters) if hyperparameters else ''
+    file_path = f'storage/full-reports/{seq}-{modes[mode][0]}-{str(arrow.utcnow())[0:24]}-{study_name}.html'.replace(":", "-")
 
-    file_path = f'storage/full-reports/{modes[mode][0]}-{str(arrow.utcnow())[0:19]}-{study_name}.html'.replace(":", "-")
-
-    title = f"{modes[mode][1]} → {arrow.utcnow().strftime('%d %b, %Y %H:%M:%S')} → {study_name}"
+    title = f"{modes[mode][1]} → {arrow.utcnow().strftime('%d %b, %Y %H:%M:%S')} → {study_name} SEQ: {seq}"
 
     try:
         qs.reports.html(returns=returns_time_series, periods_per_year=365, benchmark=buy_and_hold_returns, title=title, output=file_path)

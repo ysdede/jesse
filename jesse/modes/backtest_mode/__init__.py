@@ -139,7 +139,7 @@ def run(start_date: str, finish_date: str, candles: Dict[str, Dict[str, Union[st
                     'D').mean()
                 price_pct_change = price_df.pct_change(1).fillna(0)
                 bh_daily_returns_all_routes = price_pct_change.mean(1)
-                quantstats.quantstats_tearsheet(bh_daily_returns_all_routes, study_name)
+                quantstats.quantstats_tearsheet(bh_daily_returns_all_routes, study_name, hyperparameters)
         else:
             print(jh.color('No trades were made.', 'yellow'))
 
@@ -347,6 +347,7 @@ def iterative_simulator(candles: Dict[str, Dict[str, Union[str, np.ndarray]]], h
 
 
 def skip_simulator(candles: Dict[str, Dict[str, Union[str, np.ndarray]]], hyperparameters: dict = None) -> None:
+    print('hyperparameters', hyperparameters)
     begin_time_track = time.time()
     key = f"{config['app']['considering_candles'][0][0]}-{config['app']['considering_candles'][0][1]}"
     first_candles_set = candles[key]['candles']
